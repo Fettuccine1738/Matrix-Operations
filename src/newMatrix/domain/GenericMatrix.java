@@ -10,13 +10,11 @@ public abstract class GenericMatrix<E extends Number> {
      protected  abstract E add(E a, E b);
      protected  abstract E subtract(E a, E b);
      protected  abstract E multiply(E a, E b);
-     protected  abstract E zero();
+     protected  abstract  E zero();
      protected abstract E divide(E numerator, E denominator);
-//    protected  abstractvoid set(int i);
+    protected  abstract E signOfCofactor (int zerothRow, int i);
 
     protected abstract E[] wrapSolution(Number[] matrix);
-
-//    protected List<E> list = new ArrayList<>();
 
 
 
@@ -26,7 +24,7 @@ public abstract class GenericMatrix<E extends Number> {
         E[][] cMatrix;
         if (aMatrix.length == bMatrix.length && aMatrix[0].length == bMatrix[0].length) {
             rows = aMatrix.length;;
-            columns = bMatrix.length;
+            columns = bMatrix[0].length;
             // Generics cannot be instantiated directly
             // cast of type E is applied to Number
             cMatrix = (E[][]) new Number[rows][columns];
@@ -44,7 +42,7 @@ public abstract class GenericMatrix<E extends Number> {
         E[][] cMatrix;
         if (aMatrix.length == bMatrix.length && aMatrix[0].length == bMatrix[0].length) {
             rows = aMatrix.length;;
-            columns = bMatrix.length;
+            columns = bMatrix[0].length;
             // Generics cannot be instantiated directly
             // cast of type E is applied to Number
             cMatrix = (E[][]) new Number[rows][columns];
@@ -71,7 +69,7 @@ public abstract class GenericMatrix<E extends Number> {
 
                 for (int j = 0; j < columns; j++) {
                     cMatrix[i][j] = zero();
-                    for (int k = 0; k < rows; k++) {
+                    for (int k = 0; k < bMatrix.length; k++) {
                         cMatrix[i][j] = add(cMatrix[i][j], multiply(aMatrix[i][k], bMatrix[k][j]));
                     }
                 }
@@ -81,55 +79,77 @@ public abstract class GenericMatrix<E extends Number> {
         return cMatrix;
     }
 
-    public E[][] transpose(E[][] matrix) {
-        E[][] transposeMatrix;
+    public Object[][] transpose(E[][] matrix) {
+        Number[][] transposeMatrix;
         int rows = matrix.length;
         int columns = matrix[0].length;
         // flip columns and rows
         transposeMatrix = (E[][]) new Number[columns][rows];
-
         for (int i = 0; i < rows; i++) {
-
             for (int j = 0; j < columns; j++) {
-                transposeMatrix[i][j] = matrix[j][i];
+                transposeMatrix[j][i] = (E) matrix[i][j];
             }
+            transposeMatrix[i]  = wrapSolution(transposeMatrix[i]);
         }
-        return transposeMatrix;
+        return (E[][]) transposeMatrix;
     }
 
+    public E[][] scalar(E[][] matrix, E lambda) {
+       int m = matrix.length;
+       int n = matrix[0].length;
+
+        for (int i = 0; i < m; i++) {
+            for (int j = 0; j < n; j++) {
+                matrix[i][j] = multiply(matrix[i][j], lambda);
+            }
+        }
+        return matrix;
+    }
+
+   public E detByRecursion(E[][] matrix) {
+        E determinant = zero();
+
+        if (matrix.length == 2) return determinant(matrix);
+        else {
+           int zerothRow = findZerothRow(matrix);
+            for (int i = 0; i < matrix.length; i++) {
+                int x =  ((zerothRow + 1 + i + 1) % 2 == 0) ? 1 : -1;
+                E cofactor =  signOfCofactor(zerothRow, i) ;
+                determinant = add(determinant, multiply(detByRecursion(minor(matrix, zerothRow, i)), multiply(cofactor, matrix[zerothRow][i])));
+            }
+        }
+        return determinant;
+   }
 
 
+   private E[][] minor(E[][] originalMatrix, int zerothRow, int zerothColumn) {
+        //reduce matrix size to [n - 1][n - 1]
+       int row = originalMatrix.length - 1;
+       int column = originalMatrix[0].length - 1;
+       int m = 0;
+//        int i; int j; // iterate over original matrix
+       E[][] tempMinor = (E[][]) new Number [row][column];
+       for (int i = 0; i <= row; i++) {
+          if (zerothRow == i)  continue;
+
+          int n = 0;
+
+          for (int j = 0; j <= column; j++) {
+              if (zerothColumn == j)  continue;
+              tempMinor[m][n] = originalMatrix[i][j];
+              n++;
+          }
+          m++;
+       }
+       return tempMinor;
+   }
+   // base case 2 X 2 determinant
     private E determinant(E[][] matrix) {
-        if (matrix.length == 2) {
+        if(matrix == null) return zero();
             // matrix 2 x 2 : det(A) {[a b], [c, d]} =  ad - cb
             E e1 = multiply(matrix[0][0], matrix[1][1]);
             E e2 = multiply(matrix[1][0], matrix[0][1]);
             return subtract(e1, e2);
-        } else if (matrix.length == 3) {
-            //Rule of Sarrus to calculate diagonal
-            // positive diagonal
-            E pDiagonal1 = multiply(multiply(matrix[0][0],matrix[1][1]), matrix[2][2]);
-            E pDiagonal2 = multiply(multiply(matrix[0][1],matrix[1][2]), matrix[2][0]);
-            E pDiagonal3 = multiply(multiply(matrix[0][2],matrix[1][0]), matrix[2][1]);
-            E positiveSum = add(add(pDiagonal1,pDiagonal2), pDiagonal3);
-
-            // negative diagonal
-
-            E nDiagonal1 = multiply(multiply(matrix[0][2],matrix[1][1]), matrix[2][0]);
-            E nDiagonal2 = multiply(multiply(matrix[0][0],matrix[1][2]), matrix[2][1]);
-            E nDiagonal3 = multiply(multiply(matrix[0][1],matrix[1][0]), matrix[2][2]);
-            E negativeSum = add(add(nDiagonal1, nDiagonal2), nDiagonal3);
-
-            // subtract negative diagonal from positive diagonal
-            return subtract(positiveSum, negativeSum);
-        } else if (matrix.length > 3) {
-            // Laplace expansion, algorithm needed
-
-
-            return null;
-        }
-
-        return null;
     }
 
     public Object[] solveLinearEqns(E[][] system) {
@@ -289,10 +309,11 @@ public abstract class GenericMatrix<E extends Number> {
     }
 
     public static void printResult(Number[][] m1, Number[][] m2, Number[][] m3, char op) {
-        for(int i = 0; i < m1.length; i++) {
+        boolean skipped = false;
+        for(int i = 0; i < m1.length && i < m3.length; i++) {
 
             for (int j = 0; j < m1[0].length; j++) {
-                System.out.print(" " + m1[i][j]);
+                System.out.print((i >= m1.length) ? "  " : m2[i][j] + " ");
             }
 
             if(i == m1.length / 2) {
@@ -300,14 +321,14 @@ public abstract class GenericMatrix<E extends Number> {
             }else System.out.print("    ");
 
             for(int j = 0; j < m2[0].length; j++) {
-                System.out.print(" " + m2[i][j]);
+                System.out.print((i >= m2.length) ? "  " : m2[i][j] + " ");
             }
 
             if( i == m1.length / 2) {
                 System.out.print("  = ");
             } else System.out.print("    ");
 
-            for (int j = 0; j < m3.length; j++) {
+            for (int j = 0; j < m3[0].length; j++) {
                 System.out.print(m3[i][j] + " ");
             }
             System.out.println();
